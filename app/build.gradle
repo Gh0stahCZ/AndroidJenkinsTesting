@@ -1,0 +1,132 @@
+apply plugin: 'com.android.application'
+
+android {
+  compileSdkVersion 23
+  buildToolsVersion "23.0.1"
+
+  defaultConfig {
+    applicationId "com.tomaschlapek.ghost.jenkinstestapplication"
+    minSdkVersion 16
+    targetSdkVersion 23
+    versionCode 1
+    versionName "1.0"
+
+    testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner" // Espresso
+  }
+  buildTypes {
+    release {
+      minifyEnabled true // Enable proguard for release version.
+      proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+      testCoverageEnabled false
+    }
+    debug {
+      minifyEnabled false // Disable proguard for debug version.
+      testCoverageEnabled true
+    }
+  }
+
+  testOptions {
+    reportDir = "/home/ghost/Desktop/UITestReport" // Output of UI tests reports.
+    unitTests.all {
+      jvmArgs '-XX:MaxPermSize=256m' // Increase heap size.
+    }
+  }
+
+  lintOptions {
+    htmlOutput = file("/home/ghost/Desktop/LintReport/lintReport.html") // Output of lint report.
+    abortOnError false // Continue after fall.
+  }
+
+  com.android.ddmlib.DdmPreferences.setTimeOut(600000)
+
+  adbOptions {
+    timeOutInMs 60000 // set timeout to 1 minute
+  }
+
+  task wrapper(type: Wrapper) {
+    gradleVersion = '2.5'
+  }
+
+  dependencies {
+    compile fileTree(dir: 'libs', include: ['*.jar'])
+    compile 'com.android.support:appcompat-v7:23.1.0'
+
+    testCompile 'junit:junit:4.12'
+    testCompile 'org.robolectric:robolectric:3.0'
+    testCompile 'org.mockito:mockito-core:1.10.19'
+    testCompile 'org.hamcrest:hamcrest-library:1.1'
+    testCompile('com.squareup.assertj:assertj-android:1.0.0') {
+      exclude group: 'com.android.support', module: 'support-annotations'
+    }
+
+    androidTestCompile 'junit:junit:4.12'
+    androidTestCompile 'com.android.support:support-annotations:23.1.0'
+    androidTestCompile 'com.android.support.test.espresso:espresso-core:2.2.1'
+    androidTestCompile('com.android.support.test.espresso:espresso-contrib:2.2') {
+      exclude group: 'com.android.support', module: 'appcompat'
+      exclude group: 'com.android.support', module: 'support-v4'
+      exclude module: 'recyclerview-v7'
+    }
+  }
+}
+
+
+apply plugin: 'jacoco'
+
+jacoco {
+  toolVersion = "0.7.5.201505241946"
+}
+
+project.afterEvaluate {
+  // Grab all build types and product flavors
+  def buildTypes = android.buildTypes.collect { type -> type.name }
+  def productFlavors = android.productFlavors.collect { flavor -> flavor.name }
+
+  // When no product flavors defined, use empty
+  if (!productFlavors) productFlavors.add('')
+
+  productFlavors.each { productFlavorName ->
+    buildTypes.each { buildTypeName ->
+      def sourceName, sourcePath
+      if (!productFlavorName) {
+        sourceName = sourcePath = "${buildTypeName}"
+      } else {
+        sourceName = "${productFlavorName}${buildTypeName.capitalize()}"
+        sourcePath = "${productFlavorName}/${buildTypeName}"
+      }
+      def testTaskName = "test${sourceName.capitalize()}UnitTest"
+
+      // Create coverage task of form 'testFlavorTypeCoverage' depending on 'testFlavorTypeUnitTest'
+      task "${testTaskName}Coverage"(type: JacocoReport, dependsOn: "$testTaskName") {
+        group = "Reporting"
+        description = "Generate Jacoco coverage reports on the ${sourceName.capitalize()} build."
+
+        classDirectories = fileTree(
+          dir: "${project.buildDir}/intermediates/classes/${sourcePath}",
+          excludes: ['**/R.class',
+                     '**/R$*.class',
+                     '**/*$ViewInjector*.*',
+                     '**/*$ViewBinder*.*',
+                     '**/BuildConfig.*',
+                     '**/Manifest*.*']
+        )
+
+        def coverageSourceDirs = [
+          "src/main/java",
+          "src/$productFlavorName/java",
+          "src/$buildTypeName/java"
+        ]
+        additionalSourceDirs = files(coverageSourceDirs)
+        sourceDirectories = files(coverageSourceDirs)
+        executionData = files("${project.buildDir}/jacoco/${testTaskName}.exec")
+
+        reports {
+          xml.enabled = false
+          html.enabled = true
+          html.destination "/home/ghost/Desktop/JacocoReport/jacocoReport.html"
+
+        }
+      }
+    }
+  }
+}
